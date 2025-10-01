@@ -13,25 +13,29 @@ def home():
 def kcsc_filter():
     try:
         kcsc_api_key = os.getenv("KCSC_API_KEY")
-        query = request.args.get("query", "")  # 검색 키워드 (예: '지반')
-        
+        query = request.args.get("query", "")
+
         # 1. KCSC API 호출
         kcsc_url = f"https://kcsc.re.kr/OpenApi/CodeList?key={kcsc_api_key}"
         resp = requests.get(kcsc_url)
         if resp.status_code != 200:
             return jsonify({"error": "KCSC API 호출 실패"}), 500
 
-        # 2. 원본 데이터 → 라인 단위 분할
-        raw_data = resp.text.split("\n")
+        # 2. JSON 파싱
+        kcsc_data = resp.json()   # ← text가 아니라 json으로 파싱
+        items = kcsc_data if isinstance(kcsc_data, list) else kcsc_data.get("list", [])
 
         # 3. 검색 & 필터링
         if query:
-            filtered = [line for line in raw_data if query in line]
+            filtered = [item for item in items if query in str(item)]
         else:
-            filtered = raw_data[:200]  # 기본적으로 앞부분만 일부 제공
+            filtered = items[:200]  # 기본적으로 앞부분 일부만 제공
 
-        # 4. 구조화 (JSON 반환)
-        structured = [{"index": i, "content": line} for i, line in enumerate(filtered)]
+        # 4. 구조화 (간단히 index + 내용)
+        structured = [
+            {"index": i, "code": item.get("code"), "name": item.get("name")}
+            for i, item in enumerate(filtered)
+        ]
 
         return jsonify({
             "query": query,
@@ -41,6 +45,19 @@ def kcsc_filter():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/kcsc_filter_raw', methods=['GET'])
+def kcsc_filter_raw():
+    """KCSC API 원본 응답 그대로 보기"""
+    try:
+        kcsc_api_key = os.getenv("KCSC_API_KEY")
+        kcsc_url = f"https://kcsc.re.kr/OpenApi/CodeList?key={kcsc_api_key}"
+        resp = requests.get(kcsc_url)
+        return resp.json(), resp.status_code
+    except Exception as e:
+        return str(e), 500
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
